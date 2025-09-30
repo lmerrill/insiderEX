@@ -182,6 +182,10 @@ async function processEmailSheet(crazyDealsData, promoData, kiboData) {
     let rowsRead = rows.length;
 
     rows.forEach(row => {
+        // Access the backgroundColor using getCell()
+        const backgroundColor = row._sheet.getCell(row.rowIndex - 1, 0).backgroundColor;
+        if (backgroundColor === '#b7e1cd') return; // Skip rows with the specified background color
+
         const dateField = row._rawData[0]; // Column 1 "Date"
         if (!dateField || !DATE_REGEX.test(dateField)) return; // Skip invalid date format
 
