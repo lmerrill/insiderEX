@@ -183,13 +183,20 @@ async function processEmailSheet(crazyDealsData, promoData, kiboData) {
 
     rows.forEach(row => {
         // Access the backgroundColor using getCell()
-        const backgroundColor = row._sheet.getCell(row.rowIndex - 1, 0).backgroundColor;
-        if (backgroundColor === '#b7e1cd') return; // Skip rows with the specified background color
+//        const backgroundColor = row._sheet.getCell(row.rowIndex - 1, 0).backgroundColor;
+//        if (backgroundColor === '#b7e1cd') return; // Skip rows with the specified background color
 
         const dateField = row._rawData[0]; // Column 1 "Date"
         if (!dateField || !DATE_REGEX.test(dateField)) return; // Skip invalid date format
 
         const { Beg_DT, End_DT } = parseDate(dateField);
+
+        // Exclude rows where Beg_DT and End_DT are equal
+        //Lloyd , 11:16 AM 10/30/25
+        //So I should ignore all single date rows?  Hard and fast rule?
+        //Danielle Klick, 11:18 AM. 10/30/25
+        //it could be that eas... maybe lol just trying to think if those items would be caught in other reporting if the promos were missing
+        if (Beg_DT === End_DT) return;
 
         // Exclude rows if Beg_DT is older than 3 days or more than validDaysOut days in the future
         const compDate = new Date(End_DT);
@@ -217,102 +224,102 @@ async function processEmailSheet(crazyDealsData, promoData, kiboData) {
         }
         // Exclude rows where INSIDER PRICE = N/A and CRAZY DEAL STATUS = N/A
         //  These rows are being promoted at regular price
-        // Important to trim spaces as some cells have trailing spaces
-        if (row._rawData[7]?.trim() === 'N/A' && row._rawData[11]?.trim() === 'N/A') {
+        // Important to trim spaces as some cells have trailing spaces, added toUpperCase for consistency along with 'NA'
+        if (['N/A', 'NA'].includes(row._rawData[7]?.trim()?.toUpperCase()) && ['N/A', 'NA'].includes(row._rawData[11]?.trim()?.toUpperCase())) {
             return;
         }
         skus.forEach(sku => {
             const kiboMatch = kiboData.find(kiboRow => kiboRow.Kibo_SKU && kiboRow.Kibo_SKU.toString() === sku.toString());
             const activeValue = kiboMatch ? kiboMatch.Kibo_IsActive.toString() : 'not-Web'; // Use the Kibo_IsActive field for the Active value
             const issue = ''; // Placeholder for issue field            
-            if (row._rawData[6]?.trim() === 'N/A') {
-                const parsedSku = parseInt(sku);
-                const matchingPromo = promoData.find(promo => {
-                    const promoStartDate = formatDateFromBigQuery(promo.start_date);
-                    const promoEndDate = formatDateFromBigQuery(promo.end_date);
-/*                    return promo.item_id === parsedSku && promoStartDate === Beg_DT && promoEndDate === End_DT; */
-                    return promo.item_id === parsedSku &&
-                           promoStartDate <= Beg_DT &&
-                           promoEndDate >= End_DT;
+        //    if (['N/A', 'NA'].includes(row._rawData[6]?.trim())) {   added both N/A and NA with toUpperCase for consistency
+              if (['N/A', 'NA'].includes(row._rawData[6]?.trim()?.toUpperCase())) {
+              const parsedSku = parseInt(sku);
+              const matchingPromo = promoData.find(promo => {
+                const promoStartDate = formatDateFromBigQuery(promo.start_date);
+                const promoEndDate = formatDateFromBigQuery(promo.end_date);
+                return promo.item_id === parsedSku &&
+                     promoStartDate <= Beg_DT &&
+                     promoEndDate >= End_DT;
+              });
+              if (matchingPromo) {
+                outputRows.push({
+                  Days: days,
+                  Beg_DT,
+                  End_DT,
+                  'SKU(s)': sku,
+                  'PRODUCT / COLLECTION NAME': row._rawData[3],
+                  Active: activeValue,
+                  'PRODUCT TYPE': productType,
+                  start_date: 'na',
+                  end_date: 'na',
+                  MMID: 'na',
+                  Buy: 'na',
+                  Get: 'na',
+                  promotion_id: matchingPromo.promotion_id.toString(),
+                  sale_price: matchingPromo.sale_price.toString(),
+                  issue:  'N'
                 });
-                if (matchingPromo) {
-                    outputRows.push({
-                        Days: days,
-                        Beg_DT,
-                        End_DT,
-                        'SKU(s)': sku,
-                        'PRODUCT / COLLECTION NAME': row._rawData[3],
-                        Active: activeValue,
-                        'PRODUCT TYPE': productType,
-                        start_date: 'na',
-                        end_date: 'na',
-                        MMID: 'na',
-                        Buy: 'na',
-                        Get: 'na',
-                        promotion_id: matchingPromo.promotion_id.toString(),
-                        sale_price: matchingPromo.sale_price.toString(),
-                        issue:  'N'
-                    });
-                } else {
-                    outputRows.push({
-                        Days: days,
-                        Beg_DT,
-                        End_DT,
-                        'SKU(s)': sku,
-                        'PRODUCT / COLLECTION NAME': row._rawData[3],
-                        Active: activeValue,
-                        'PRODUCT TYPE': productType,
-                        start_date: 'na',
-                        end_date: 'na',
-                        MMID: 'na',
-                        Buy: 'na',
-                        Get: 'na',
-                        promotion_id: 'missing',
-                        sale_price: 'missing',
-                        issue: 'Y'
-                    });
-                }
+              } else {
+                outputRows.push({
+                  Days: days,
+                  Beg_DT,
+                  End_DT,
+                  'SKU(s)': sku,
+                  'PRODUCT / COLLECTION NAME': row._rawData[3],
+                  Active: activeValue,
+                  'PRODUCT TYPE': productType,
+                  start_date: 'na',
+                  end_date: 'na',
+                  MMID: 'na',
+                  Buy: 'na',
+                  Get: 'na',
+                  promotion_id: 'missing',
+                  sale_price: 'missing',
+                  issue: 'Y'
+                });
+              }
             } else {
-                const matchingDeal = crazyDealsData.find(deal => deal.item_id === sku);
-                const { buy, get } = parseCD(row._rawData[7]) || { buy: 'missing', get: 'missing' };
+              const matchingDeal = crazyDealsData.find(deal => deal.item_id === sku);
+              const { buy, get } = parseCD(row._rawData[7]) || { buy: 'missing', get: 'missing' };
 
-                if (matchingDeal) {
-                    outputRows.push({
-                        Days: days,
-                        Beg_DT,
-                        End_DT,
-                        'SKU(s)': sku,
-                        'PRODUCT / COLLECTION NAME': row._rawData[3],
-                        Active: activeValue,
-                        'PRODUCT TYPE': productType,
-                        start_date: formatDateFromBigQuery(matchingDeal.start_date),
-                        end_date: formatDateFromBigQuery(matchingDeal.end_date),
-                        MMID: matchingDeal.MMID.toString(),
-                        Buy: matchingDeal.minimum_purchase,
-                        Get: ((matchingDeal.minimum_purchase * matchingDeal.crazy_deal_percent) / 100.00).toFixed(2),
-                        promotion_id: 'na',
-                        sale_price: 'na',
-                        issue: 'N'
-                    });
-                } else {
-                    outputRows.push({
-                        Days: days,
-                        Beg_DT,
-                        End_DT,
-                        'SKU(s)': sku,
-                        'PRODUCT / COLLECTION NAME': row._rawData[3],
-                        Active: activeValue,
-                        'PRODUCT TYPE': productType,
-                        start_date: 'missing',
-                        end_date: 'missing',
-                        MMID: 'missing',
-                        Buy: buy,
-                        Get: get,
-                        promotion_id: 'na',
-                        sale_price: 'na',
-                        issue: 'Y'
-                    });
-                }
+              if (matchingDeal) {
+                outputRows.push({
+                  Days: days,
+                  Beg_DT,
+                  End_DT,
+                  'SKU(s)': sku,
+                  'PRODUCT / COLLECTION NAME': row._rawData[3],
+                  Active: activeValue,
+                  'PRODUCT TYPE': productType,
+                  start_date: formatDateFromBigQuery(matchingDeal.start_date),
+                  end_date: formatDateFromBigQuery(matchingDeal.end_date),
+                  MMID: matchingDeal.MMID.toString(),
+                  Buy: matchingDeal.minimum_purchase,
+                  Get: ((matchingDeal.minimum_purchase * matchingDeal.crazy_deal_percent) / 100.00).toFixed(2),
+                  promotion_id: 'na',
+                  sale_price: 'na',
+                  issue: 'N'
+                });
+              } else {
+                outputRows.push({
+                  Days: days,
+                  Beg_DT,
+                  End_DT,
+                  'SKU(s)': sku,
+                  'PRODUCT / COLLECTION NAME': row._rawData[3],
+                  Active: activeValue,
+                  'PRODUCT TYPE': productType,
+                  start_date: 'missing',
+                  end_date: 'missing',
+                  MMID: 'missing',
+                  Buy: buy,
+                  Get: get,
+                  promotion_id: 'na',
+                  sale_price: 'na',
+                  issue: 'Y'
+                });
+              }
             }
         });
     });
